@@ -16,6 +16,7 @@ if not OWNER_ID:
 
 OWNER_ID = int(OWNER_ID)
 
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)  # ← เพิ่มตรงนี้!
 
@@ -95,3 +96,6 @@ async def เย็ดแม่(ctx):
     await ctx.send("🤖 รับทราบคำสั่งระดับสูง")
 
 bot.run(TOKEN)
+
+from dotenv import load_dotenv
+load_dotenv(override=True)
