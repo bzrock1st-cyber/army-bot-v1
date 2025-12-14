@@ -1,0 +1,29 @@
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ===== Environment =====
+.env
+
+# ===== Virtual Env =====
+venv/
+.env/
+.venv/
+
+# ===== Pip / Cache =====
+.cache/
+pip-cache/
+
+# ===== OS / Editor =====
+.DS_Store
+*.log
+*.swp
+
+# ===== Termux =====
+.bash_history
+.termux/
+
+# ===== Git =====
+.git/
