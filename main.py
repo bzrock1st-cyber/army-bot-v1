@@ -1,3 +1,18 @@
-git init
-git branch -M main
-git remote add origin https://github.com/bzrock1st-cyber/army-bot-v1.git
+import discord
+from discord.ext import commands
+import os
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="/", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send("pong")
+
+bot.run(TOKEN)
