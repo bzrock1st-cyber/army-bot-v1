@@ -6,7 +6,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_ID = os.getenv("OWNER_ID")
+
+if not TOKEN:
+    raise RuntimeError("❌ DISCORD_TOKEN not set")
+
+if not OWNER_ID:
+    raise RuntimeError("❌ OWNER_ID not set")
+
+OWNER_ID = int(OWNER_ID)
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)  # ← เพิ่มตรงนี้!
