@@ -1,22 +1,34 @@
 import os
 import discord
 from discord.ext import commands
+import requests
+import asyncio
 from dotenv import load_dotenv
 
-load_dotenv(override=True)  # โหลด .env ก่อนเลย
+load_dotenv(override=True)
 
-# ========== CONFIG ==========
-TOKEN = os.getenv("DISCORD_TOKEN")
+# ========== โหลดจาก .env เท่านั้น ==========
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OWNER_ID = os.getenv("OWNER_ID")
+DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID")  # ช่องฐานแม่ (ตัวเลข)
 
-if not TOKEN:
-    raise RuntimeError("❌ DISCORD_TOKEN ไม่ได้ตั้งใน .env หรือ Environment Variables!")
+LINE_TOKEN = os.getenv("LINE_TOKEN")                  # Channel Access Token (long-lived)
+LINE_GROUP_ID = os.getenv("LINE_GROUP_ID")             # Group ID ของ LINE
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")       # Group ID ของ Telegram (ติดลบ)
+
+# เช็คค่าจำเป็น
+if not DISCORD_TOKEN:
+    raise RuntimeError("❌ DISCORD_TOKEN หาย! ใส่ใน .env ด้วย")
 if not OWNER_ID:
-    raise RuntimeError("❌ OWNER_ID ไม่ได้ตั้ง!")
-
+    raise RuntimeError("❌ OWNER_ID หาย! ใส่ใน .env ด้วย")
+if not DISCORD_CHANNEL_ID:
+    print("⚠️ DISCORD_CHANNEL_ID หาย → Bridge Discord ไม่ทำงาน")
 OWNER_ID = int(OWNER_ID)
+DISCORD_CHANNEL_ID = int(DISCORD_CHANNEL_ID) if DISCORD_CHANNEL_ID else None
 
-# Intents ที่จำเป็นและปลอดภัย (เปิดใน Developer Portal: Message Content, Members, Server Members)
+# Intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -25,16 +37,103 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 
-# ========== PERMISSION ==========
-def is_owner(ctx):
-    return ctx.author.id == OWNER_ID
+# ========== Bridge Functions ==========
+def send_to_line(text):
+    if not LINE_TOKEN or not LINE_GROUP_ID:
+        print("⚠️ LINE config หาย → ข้ามการส่ง")
+        return
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {"Authorization": f"Bearer {LINE_TOKEN}"}
+    payload = {"to": LINE_GROUP_ID, "messages": [{"type": "text", "text": text[:5000]}]}
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        if r.status_code != 200:
+            print(f"LINE error: {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"ส่ง LINE ล้มเหลว: {e}")
 
-def is_admin(ctx):
-    return ctx.author.guild_permissions.administrator or is_owner(ctx)
+def send_to_telegram(text):
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ Telegram config หาย → ข้ามการส่ง")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text[:4096]}
+    try:
+        r = requests.post(url, data=payload, timeout=10)
+        if r.status_code != 200:
+            print(f"Telegram error: {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"ส่ง Telegram ล้มเหลว: {e}")
 
-# ========== EVENTS ==========
+# ========== Events ==========
 @bot.event
 async def on_ready():
+    print(f"✅ กองทัพตื่นแล้ว: {bot.user}")
+    if DISCORD_CHANNEL_ID:
+        channel = bot.get_channel(DISCORD_CHANNEL_ID)
+        if channel:
+            await channel.send("ฐานแม่ออนไลน์พร้อมรบ 24/7 💂‍♂️")
+
+@bot.event
+async def on_guild_join(guild):
+    owner = await bot.fetch_user(OWNER_ID)
+    await owner.send(f"⚠️ บอทถูกเพิ่มเข้าเซิร์ฟ: {guild.name}")
+
+@bot.event
+async def on_member_remove(member):
+    if member == bot.user:
+        owner = await bot.fetch_user(OWNER_ID)
+        await owner.send(f"❌ บอทถูกเตะออกจากเซิร์ฟ: {member.guild.name}")
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    # Bridge: Discord ช่องฐานแม่ → LINE + Telegram
+    if DISCORD_CHANNEL_ID and message.channel.id == DISCORD_CHANNEL_ID:
+        text = f"[ฐานแม่ | {message.author.display_name}]: {message.content}"
+        send_to_line(text)
+        send_to_telegram(text)
+
+    await bot.process_commands(message)
+
+# ========== Commands ==========
+@bot.command()
+async def ping(ctx):
+    await ctx.send(f"🟢 Online | Latency: {round(bot.latency*1000)}ms")
+
+@bot.command()
+async def menu(ctx):
+    await ctx.send("🛒 รายการสินค้าประจำกองทัพ\n1️⃣ A\n2️⃣ B\n3️⃣ C")
+
+@bot.command()
+async def all(ctx):
+    if ctx.author.id != OWNER_ID and not ctx.author.guild_permissions.administrator:
+        return
+    await ctx.message.delete()
+    await ctx.send("@everyone มากองรวมพลด่วน!")
+
+@bot.command()
+async def kick(ctx, member: discord.Member, *, reason="ไม่ระบุ"):
+    if ctx.author.id != OWNER_ID and not ctx.author.guild_permissions.administrator:
+        return
+    await member.kick(reason=reason)
+    await ctx.send(f"👢 เตะ {member.mention} แล้ว")
+
+@bot.command()
+async def ban(ctx, member: discord.Member, *, reason="ไม่ระบุ"):
+    if ctx.author.id != OWNER_ID and not ctx.author.guild_permissions.administrator:
+        return
+    await member.ban(reason=reason)
+    await ctx.send(f"⛔ แบน {member.mention} แล้ว")
+
+@bot.command(name="เย็ดแม่")
+async def secret(ctx):
+    await ctx.send("🤖 รับทราบคำสั่งระดับสูง")
+
+# ========== RUN ==========
+bot.run(DISCORD_TOKEN)async def on_ready():
     print(f"✅ กองทัพตื่นแล้ว: {bot.user} (ID: {bot.user.id})")
     print("พร้อมรบ 24/7 💂‍♂️")
 
